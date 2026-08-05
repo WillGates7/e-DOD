@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>e-DOP - Distributor Ordering Portal Pertamina Lubricants</title>
+<style>
+  :root {
+    --red: #D2201F;
+    --blue: #0B4C8C;
+    --blue-light: #1E6FB8;
+    --bg: #F5F8FC;
+    --border: #EEEDE8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: #222; }
+  .hidden { display: none !important; }
+  .btn { border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer; }
+  .btn-red { background: var(--red); color: white; }
+  .btn-red:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-blue { background: var(--blue); color: white; }
+  .btn-outline { background: white; border: 1px solid #ddd; color: #333; }
+  .card { background: white; border-radius: 16px; border: 1px solid rgba(0,0,0,0.05); padding: 20px; }
+  input, select { font-family: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; background: white; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-weight: 400; font-size: 12px; color: #888; padding: 12px; background: #FAFAF8; }
+  td { padding: 12px; border-top: 1px solid var(--border); }
+  a { color: inherit; }
+  .field-label { font-size: 12px; color: #888; display: block; margin-bottom: 4px; }
+
+  /* Login */
+  #login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .login-box { width: 100%; max-width: 380px; background: white; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 32px; }
+  .logo-chip { width: 40px; height: 40px; border-radius: 10px; background: var(--red); display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
+
+  /* App shell */
+  #app-screen { min-height: 100vh; display: flex; }
+  #sidebar { background: var(--blue); color: white; display: flex; flex-direction: column; flex-shrink: 0; transition: width 0.2s ease; width: 224px; }
+  #sidebar.collapsed { width: 64px; }
+  #sidebar .logo-row { padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 8px; }
+  #sidebar.collapsed .logo-row { justify-content: center; padding: 20px 0; }
+  #sidebar .nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: rgba(255,255,255,0.6); text-decoration: none; cursor: pointer; background: transparent; border: none; width: 100%; text-align: left; }
+  #sidebar.collapsed .nav-link { justify-content: center; padding: 10px 0; }
+  #sidebar .nav-link.active { background: rgba(255,255,255,0.1); color: white; }
+  #sidebar nav { flex: 1; padding: 0 12px; display: flex; flex-direction: column; gap: 4px; }
+  #sidebar .collapse-btn-wrap { padding: 12px; }
+  #main { flex: 1; overflow: auto; }
+  #topbar { padding: 20px 32px; border-bottom: 1px solid rgba(0,0,0,0.05); background: white; display: flex; align-items: center; justify-content: space-between; }
+  #content { padding: 32px; max-width: 900px; margin: 0 auto; }
+
+  .notif-wrap { position: fixed; top: 16px; right: 16px; z-index: 50; display: flex; flex-direction: column; gap: 8px; width: 320px; }
+  .notif { background: white; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 12px; padding: 14px; display: flex; gap: 10px; align-items: flex-start; }
+  .notif .icon-circle { width: 28px; height: 28px; border-radius: 50%; background: #E9F1FB; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+  .icon { display: inline-flex; }
+  svg { display: block; }
+
+  .stat-card { flex: 1; }
+  .progress-bar { height: 6px; background: #eee; border-radius: 3px; margin-top: 10px; overflow: hidden; }
+  .progress-fill { height: 6px; }
+
+  .stepper { display: flex; align-items: center; }
+  .step { display: flex; flex-direction: column; align-items: center; width: 100px; }
+  .step-circle { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; }
+  .step-line { flex: 1; height: 2px; margin-top: -22px; }
+  .step-row { display: flex; align-items: center; flex: 1; }
+  .step-row:last-child { flex: none; }
+
+  .badge { font-size: 12px; padding: 4px 10px; border-radius: 999px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+// ============ DATA (dari List_Distributor_Sales_Region_I.xlsx, contoh PT. Serdang Jaya) ============
+const RED = "var(--red)", BLUE = "var(--blue)", BLUE_LIGHT = "var(--blue-light)";
+
+const DISTRIBUTOR = { nama: "PT. Serdang Jaya" };
+// CATATAN: Data kredit ini TIDAK ada di file Excel Region I (tidak ada kolom limit/plafon kredit).
+// Angka di bawah cuma placeholder demo — di production harus ditarik dari data AR/Credit Management SAP.
+const DISTRIBUTOR_CREDIT = { limit: 500000000, terpakai: 0 };
+function formatRupiah(n) { return "Rp" + n.toLocaleString("id-ID"); }
+const RETAIL_TERRITORIES = [
+  { territory: "Labuhan Batu", noSh: "857976" },
+  { territory: "Medan Utara", noSh: "857979" },
+];
+const INDUSTRI_CODE = { noSp: "730948" };
+
+// Plant per territory/segmen (dari sheet "PLANT D2D DSP", List_Distributor_Sales_Region_I.xlsx).
+// Setiap territory/segmen punya 2 kode plant: Plant DSP (selalu L111) dan Plant D2D (beda per territory).
+// Kolom PLANT NAME di sheet menentukan tipe default: "D2D" -> distributor bisa pilih Penebusan
+// via GN (pakai Plant D2D) atau DSP (pakai Plant DSP L111). "DSP" -> Plant tetap DSP, tidak ada pilihan GN.
+const PLANT_DATA = {
+  "Labuhan Batu": { dspPlant: "L111", d2dPlant: "L122", tipe: "D2D" },
+  "Medan Utara": { dspPlant: "L111", d2dPlant: "L131", tipe: "D2D" },
+  "Industri": { dspPlant: "L111", d2dPlant: "L131", tipe: "DSP" },
+};
+function plantInfoOf(group) { return PLANT_DATA[group] || { dspPlant: "-", d2dPlant: "-", tipe: "DSP" }; }
+function isD2DPlant(group) { return plantInfoOf(group).tipe === "D2D"; }
+
+const ALLOCATION_DATA = {
+  "Labuhan Batu": [
+    { kode: "A070102324", nama: "MESRAN MIN 40 SE/CC PL1 SCRTY, 20X1L", satuan: "BOX", alokasi: 312 },
+    { kode: "A070109641", nama: "MEDITRAN S MIN 40 CF-2/SF PL1 4X5L", satuan: "BOX", alokasi: 235 },
+    { kode: "A070109655", nama: "MEDITRAN S MIN 40 CF-2/SF PL1 2X10L", satuan: "BOX", alokasi: 300 },
+    { kode: "A070110041", nama: "MEDITRAN SC MIN 15W-40 CF4 PL1 4X5L", satuan: "BOX", alokasi: 300 },
+    { kode: "A070110055", nama: "MEDITRAN SC MIN 15W-40 CF4 PL1 2X10L", satuan: "BOX", alokasi: 300 },
+    { kode: "A070102919", nama: "MESRAN SPR MTR 20W-50 SG/MA, 24X0,8L", satuan: "BOX", alokasi: 300 },
+    { kode: "A070112918", nama: "ENDURO 4T RACING 10W-40 API SL 6X1L", satuan: "BOX", alokasi: 200 },
+    { kode: "A070106040", nama: "PRIMA XP 20W-50 API SL, 6X4L", satuan: "BOX", alokasi: 100 },
+  ],
+  "Medan Utara": [
+    { kode: "A070102324", nama: "MESRAN MIN 40 SE/CC PL1 SCRTY, 20X1L", satuan: "BOX", alokasi: 0 },
+    { kode: "A070110041", nama: "MEDITRAN SC MIN 15W-40 CF4 PL1 4X5L", satuan: "BOX", alokasi: 0 },
+    { kode: "A070109641", nama: "MEDITRAN S MIN 40 CF-2/SF PL1 4X5L", satuan: "BOX", alokasi: 0 },
+    { kode: "A070106040", nama: "PRIMA XP 20W-50 API SL, 6X4L", satuan: "BOX", alokasi: 0 },
+  ],
+  "Industri": [
+    { kode: "A070109675", nama: "MEDITRAN S MIN 40 CF-2/SF DRUM 209L", satuan: "DR", alokasi: 0 },
+    { kode: "A070135475", nama: "TURALIK 52 MIN 68 DRUM 209L", satuan: "DR", alokasi: 0 },
+    { kode: "A070110875", nama: "MEDITRAN SX MIN 15W-40 CH4 DRUM 209L", satuan: "DR", alokasi: 0 },
+    { kode: "A070109275", nama: "MEDITRAN MIN 40 CC DRUM 209L", satuan: "DR", alokasi: 0 },
+  ],
+};
+
+const TARGET_REALISASI_BY_GROUP = {
+  "Labuhan Batu": { targetSellIn: 504.7, realSellIn: 245.5, targetSellOut: 546.0, realSellOut: 208.6 },
+  "Medan Utara": { targetSellIn: 854.2, realSellIn: 649.5, targetSellOut: 924.0, realSellOut: 474.2 },
+  "Industri": { targetSellIn: 1997.2, realSellIn: 769.3, targetSellOut: 1997.2, realSellOut: 737.5 },
+};
+
+const STATUS_FLOW_CASH = ["Order dikirim", "Validasi admin (quotation)", "Quotation terbit", "Upload bukti bayar", "Validasi bukti bayar", "Sales order terbit"];
+const STATUS_FLOW_KREDIT = ["Order dikirim", "Validasi admin (SO)", "Sales order terbit"];
+
+function groupKeyOf(segment, territory) { return segment === "Retail" ? territory : "Industri"; }
+function allocKey(group, kode) { return group + "::" + kode; }
+function allInitialAllocUsed() {
+  const used = {};
+  Object.entries(ALLOCATION_DATA).forEach(([group, list]) => list.forEach((item) => { used[allocKey(group, item.kode)] = 0; }));
+  return used;
+}
+function isAutoStep(label, flow) {
+  const final = flow[flow.length - 1];
+  return label !== final && label !== "Upload bukti bayar";
+}
+function getOverviewData(segment, territoryFilter) {
+  if (segment === "Industri") return TARGET_REALISASI_BY_GROUP["Industri"];
+  if (territoryFilter === "Semua Territory") {
+    const a = TARGET_REALISASI_BY_GROUP["Labuhan Batu"], b = TARGET_REALISASI_BY_GROUP["Medan Utara"];
+    return {
+      targetSellIn: +(a.targetSellIn + b.targetSellIn).toFixed(1),
+      realSellIn: +(a.realSellIn + b.realSellIn).toFixed(1),
+      targetSellOut: +(a.targetSellOut + b.targetSellOut).toFixed(1),
+      realSellOut: +(a.realSellOut + b.realSellOut).toFixed(1),
+    };
+  }
+  return TARGET_REALISASI_BY_GROUP[territoryFilter];
+}
+
+// ============ ICONS (minimal inline SVG) ============
+const ICONS = {
+  package: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/></svg>',
+  bell: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="'+BLUE_LIGHT+'" stroke-width="2"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>',
+  chevronLeft: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>',
+  chevronRight: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>',
+  chevronDown: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>',
+  search: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>',
+  upload: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg>',
+  file: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>',
+  download: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>',
+  check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>',
+  clock: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+  circle: '<svg width="10" height="10" viewBox="0 0 24 24" fill="#999"><circle cx="12" cy="12" r="10"/></svg>',
+  arrowLeft: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+  logout: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>',
+  grid: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+  clipboard: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6a1 1 0 011 1v1H8V4a1 1 0 011-1z"/><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 11h6M9 15h6"/></svg>',
+  barChart: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>',
+};
+
+// ============ STATE ============
+let state = {
+  screen: "login",
+  tab: "overview",
+  segment: "Retail",
+  territory: "Labuhan Batu",
+  overviewTerritory: "Semua Territory",
+  qty: {},
+  paymentType: "Cash",
+  penebusanMethod: "GN",
+  catatanKonsumen: "",
+  search: "",
+  orders: [],
+  activeOrderId: null,
+  detailReturnTab: "realisasi",
+  notifications: [],
+  allocUsed: allInitialAllocUsed(),
+  sidebarCollapsed: false,
+  guaranteedSuccess: true,
+};
+let orderCounter = 0;
+let notifCounter = 0;
+
+function setState(patch) { Object.assign(state, patch); render(); }
+
+function pushNotification(message) {
+  const id = "n" + (notifCounter++);
+  state.notifications.push({ id, message });
+  render();
+  setTimeout(() => { state.notifications = state.notifications.filter((n) => n.id !== id); render(); }, 5000);
+}
+
+// ============ ACTIONS ============
+function login() { setState({ screen: "app" }); }
+function logout() { setState({ screen: "login", tab: "overview" }); }
+function goTab(tab) { setState({ tab }); }
+function toggleSidebar() { setState({ sidebarCollapsed: !state.sidebarCollapsed }); }
+function toggleGuaranteedSuccess(v) { state.guaranteedSuccess = v; }
+// Kalau group (segmen/territory) baru punya Plant yang bukan D2D (fixed DSP),
+// default metode penebusan mengikuti PLANT NAME di sheet — tapi tetap bisa di-switch manual.
+function penebusanForGroup(group) {
+  return isD2DPlant(group) ? "GN" : "DSP";
+}
+// Segmen Industri sudah punya alokasi FO Agustus di Excel untuk Plant L131 (D2D) — jadi Total/Sisa
+// Alokasi Industri SELALU ikut Excel, terlepas dari Penebusan GN atau DSP yang dipilih.
+// Untuk Retail, alokasi Excel hanya berlaku kalau Penebusan-nya GN; kalau DSP, alokasi menunggu
+// pembagian manual dari Admin Internal karena Plant DSP Retail belum punya kuota pasti di Excel.
+function usesExcelAlokasi(segment, penebusanMethod) {
+  return segment === "Industri" || penebusanMethod === "GN";
+}
+function setSegment(v) {
+  const group = groupKeyOf(v, state.territory);
+  setState({ segment: v, penebusanMethod: penebusanForGroup(group), qty: {}, search: "" });
+}
+function setTerritory(v) {
+  const group = groupKeyOf(state.segment, v);
+  setState({ territory: v, penebusanMethod: penebusanForGroup(group), qty: {}, search: "" });
+}
+function setOverviewTerritory(v) { setState({ overviewTerritory: v }); }
+function setPaymentType(v) { setState({ paymentType: v }); }
+function setPenebusanMethod(v) { setState({ penebusanMethod: v }); }
+function setCatatan(v) { state.catatanKonsumen = v; render(); }
+function setSearch(v) { state.search = v; render(); }
+function setQty(key, v) { state.qty[key] = v === "" ? 0 : (parseInt(v, 10) || 0); render(); }
+
+// Memproses SATU langkah Admin Internal untuk sebuah order, dipicu manual lewat
+// tombol "[Simulasi] Proses sebagai Admin Internal" - bukan otomatis dengan timer,
+// karena di dunia nyata durasi validasi Admin tergantung kecepatan kerja Admin,
+// bukan waktu tetap. Distributor tetap selalu tahu di tahap mana order-nya pending
+// lewat badge status & teks penjelasan.
+function processAdminStep(orderId) {
+  const x = state.orders.find((o) => o.id === orderId);
+  if (!x || x.terminalStatus) return;
+  const label = x.flow[x.step];
+  if (!isAutoStep(label, x.flow)) return;
+
+  if (label === "Validasi admin (quotation)" || label === "Validasi admin (SO)") {
+    if (!state.guaranteedSuccess && Math.random() < 0.2) {
+      const reason = "Dokumen pendukung order tidak lengkap";
+      x.terminalStatus = "DITOLAK";
+      x.rejectReason = reason;
+      pushNotification("Admin Internal menolak order " + x.id + ". Alasan: " + reason + ".");
+      render();
+      return;
+    }
+  }
+  if (label === "Validasi bukti bayar") {
+    if (!state.guaranteedSuccess && Math.random() < 0.3) {
+      const reason = "Nominal transfer tidak sesuai dengan Quotation";
+      x.step = x.flow.indexOf("Upload bukti bayar");
+      x.paymentRejected = true;
+      x.paymentRejectReason = reason;
+      pushNotification("Admin Internal menolak bukti bayar order " + x.id + ". Silakan upload ulang.");
+      render();
+      return;
+    }
+  }
+
+  const nextStep = Math.min(x.step + 1, x.flow.length - 1);
+  const nextLabel = x.flow[nextStep];
+  x.step = nextStep;
+  x.paymentRejected = false;
+
+  // Titik potong alokasi berbeda per metode bayar: Cash dipotong begitu Quotation terbit
+  // (Admin sudah pastikan qty & material), Kredit dipotong saat Sales Order terbit (flow
+  // Kredit memang tidak melewati tahap Quotation terpisah).
+  const deductionLabel = x.paymentType === "Cash" ? "Quotation terbit" : "Sales order terbit";
+
+  if (nextLabel === "Quotation terbit") {
+    x.quotationNumber = "QUO-2026-" + x.id.split("-")[2];
+    pushNotification("Admin Internal telah menerbitkan Quotation " + x.quotationNumber + " untuk order " + x.id + "." + (x.usesExcelAlokasi ? " Alokasi sudah dipotong sesuai qty order." : ""));
+  }
+  if (nextLabel === "Sales order terbit") {
+    x.soNumber = "SO-2026-" + x.id.split("-")[2];
+    pushNotification("Admin Internal telah menerbitkan Sales Order " + x.soNumber + " untuk order " + x.id + ". Order berhasil.");
+  }
+  // Alokasi Excel (pool D2D/Industri) hanya terpotong untuk order yang usesExcelAlokasi.
+  // Order Retail via DSP tidak menyentuh pool alokasi Excel karena alokasinya ditentukan manual oleh Admin Internal.
+  if (nextLabel === deductionLabel && x.usesExcelAlokasi && !x.allocDeducted) {
+    x.items.forEach((it) => { state.allocUsed[it.allocKey] = (state.allocUsed[it.allocKey] || 0) + it.qty; });
+    x.allocDeducted = true;
+  }
+  render();
+}
+
+function submitOrder() {
+  const group = groupKeyOf(state.segment, state.territory);
+  // Filter berdasarkan prefix "group::" — proteksi kedua supaya qty milik Segmen/Territory lain
+  // (kalau karena sebab apapun masih tersisa di state.qty) tidak pernah ikut ter-submit ke order group aktif.
+  const items = Object.entries(state.qty).filter(([key, v]) => v > 0 && key.startsWith(group + "::"));
+  if (items.length === 0) return;
+  if (state.segment === "Industri" && !state.catatanKonsumen.trim()) return;
+  const list = ALLOCATION_DATA[group];
+  const flow = state.paymentType === "Cash" ? STATUS_FLOW_CASH.slice() : STATUS_FLOW_KREDIT.slice();
+  const plantInfo = plantInfoOf(group);
+  const plantIsD2D = isD2DPlant(group);
+  const penebusan = state.penebusanMethod;
+  const fromExcel = usesExcelAlokasi(state.segment, penebusan);
+  const order = {
+    id: "ORD-2026-" + String(++orderCounter).padStart(4, "0"),
+    territory: state.segment === "Retail" ? state.territory : "No. SP " + INDUSTRI_CODE.noSp,
+    segment: state.segment,
+    paymentType: state.paymentType,
+    plantDsp: plantInfo.dspPlant,
+    plantD2d: plantInfo.d2dPlant,
+    plantTipe: plantIsD2D ? "D2D" : "DSP",
+    plantUsed: penebusan === "GN" ? plantInfo.d2dPlant : plantInfo.dspPlant,
+    penebusanMethod: penebusan,
+    usesExcelAlokasi: fromExcel,
+    alokasiSource: fromExcel ? "Excel (100%)" : "Menunggu pembagian Admin Internal",
+    allocDeducted: false,
+    quotationNumber: null,
+    soNumber: null,
+    catatanKonsumen: state.segment === "Industri" ? state.catatanKonsumen.trim() : "",
+    items: items.map(([key, q]) => {
+      const kode = key.split("::")[1];
+      const material = list.find((m) => m.kode === kode);
+      return Object.assign({}, material, { qty: q, allocKey: key });
+    }),
+    step: 0,
+    flow,
+    date: new Date().toLocaleDateString("id-ID"),
+  };
+  state.orders.unshift(order);
+  state.qty = {};
+  state.catatanKonsumen = "";
+  state.activeOrderId = order.id;
+  state.tab = "detail";
+  render();
+}
+
+function openOrder(id, fromTab) { setState({ activeOrderId: id, tab: "detail", detailReturnTab: fromTab || state.tab }); }
+
+function markProofUploaded(orderId) {
+  const x = state.orders.find((o) => o.id === orderId);
+  if (!x) return;
+  x.step = x.flow.indexOf("Validasi bukti bayar");
+  x.proofUploaded = true;
+  x.paymentRejected = false;
+  x.paymentRejectReason = null;
+  render();
+}
+
+function cancelOrder(orderId) {
+  const order = state.orders.find((o) => o.id === orderId);
+  if (!order || order.terminalStatus) return;
+
+  const confirmed = window.confirm("Yakin ingin membatalkan order " + order.id + "? Tindakan ini tidak bisa dibatalkan lagi.");
+  if (!confirmed) return;
+  const reason = window.prompt("Alasan pembatalan (opsional):") || "";
+
+  // allocDeducted = true berarti alokasi sudah terpotong (Cash: sejak Quotation terbit,
+  // Kredit: sejak Sales Order terbit) — bukan lagi cuma dicek dari step terakhir.
+  if (order.allocDeducted) {
+    order.items.forEach((it) => {
+      state.allocUsed[it.allocKey] = Math.max(0, (state.allocUsed[it.allocKey] || 0) - it.qty);
+    });
+  }
+
+  order.terminalStatus = "DIBATALKAN";
+  order.cancelReason = reason;
+  render();
+  pushNotification("Order " + orderId + " dibatalkan oleh distributor." + (order.allocDeducted ? " Alokasi yang sudah terpakai telah dikembalikan." : ""));
+}
+
+// ============ RENDER HELPERS ============
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+function renderLogin() {
+  return `
+  <div id="login-screen">
+    <div class="login-box">
+      <div class="logo-chip">${ICONS.package}</div>
+      <h1 style="font-size:18px;font-weight:500;margin:0 0 4px;color:${BLUE}">e-DOP</h1>
+      <p style="font-size:14px;color:#666;margin:0 0 24px;">Distributor Ordering Portal — Pertamina Lubricants</p>
+      <div style="margin-bottom:16px;">
+        <label class="field-label">Username</label>
+        <input id="login-username" value="serdangjaya01" style="width:100%;">
+      </div>
+      <div style="margin-bottom:16px;">
+        <label class="field-label">Password</label>
+        <input id="login-password" type="password" value="password123" style="width:100%;">
+      </div>
+      <button class="btn btn-red" style="width:100%;" onclick="login()">Masuk</button>
+      <p style="font-size:12px;color:#999;text-align:center;margin-top:20px;">Demo tampilan — data alokasi &amp; target diambil dari file Excel Region I</p>
+    </div>
+  </div>`;
+}
+
+function renderNotifications() {
+  if (state.notifications.length === 0) return "";
+  return `<div class="notif-wrap">${state.notifications.map((n) => `
+    <div class="notif">
+      <div class="icon-circle">${ICONS.bell}</div>
+      <p style="font-size:14px;color:${BLUE};margin:0;line-height:1.4;">${esc(n.message)}</p>
+    </div>`).join("")}</div>`;
+}
+
+function renderSidebar() {
+  const navs = [
+    { id: "overview", label: "Overview", icon: ICONS.grid },
+    { id: "ordering", label: "Ordering", icon: ICONS.clipboard },
+    { id: "uploadBukti", label: "Upload Bukti Bayar", icon: ICONS.upload },
+    { id: "salesOrder", label: "Sales Order", icon: ICONS.file },
+    { id: "realisasi", label: "Realisasi", icon: ICONS.barChart },
+  ];
+  const collapsed = state.sidebarCollapsed;
+  return `
+  <aside id="sidebar" class="${collapsed ? "collapsed" : ""}">
+    <div class="logo-row">
+      <div style="width:28px;height:28px;border-radius:6px;background:${RED};display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ICONS.package}</div>
+      ${collapsed ? "" : '<div style="font-size:14px;font-weight:500;line-height:1.2;">e-DOP</div>'}
+    </div>
+    <div class="collapse-btn-wrap" style="display:flex;${collapsed ? "justify-content:center;" : ""}">
+      <button class="nav-link" style="width:${collapsed ? "36px" : "100%"};justify-content:center;" onclick="toggleSidebar()" title="${collapsed ? "Tampilkan menu" : "Sembunyikan menu"}">
+        ${collapsed ? ICONS.chevronRight : ICONS.chevronLeft}
+      </button>
+    </div>
+    <nav>
+      ${navs.map((n) => {
+        const active = state.tab === n.id || (n.id === state.detailReturnTab && state.tab === "detail");
+        return `<button class="nav-link ${active ? "active" : ""}" onclick="goTab('${n.id}')" title="${collapsed ? n.label : ""}">
+          <span style="width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">${n.icon}</span>
+          ${collapsed ? "" : n.label}
+        </button>`;
+      }).join("")}
+    </nav>
+    <div style="padding:12px;border-top:1px solid rgba(255,255,255,0.1);">
+      <button class="nav-link" onclick="logout()" title="${collapsed ? "Keluar" : ""}">${ICONS.logout}${collapsed ? "" : " Keluar"}</button>
+    </div>
+  </aside>`;
+}
+
+function renderTopbar() {
+  const codeLabel = state.segment === "Retail"
+    ? "No. SH " + ((RETAIL_TERRITORIES.find((t) => t.territory === state.territory) || {}).noSh || "")
+    : "No. SP " + INDUSTRI_CODE.noSp;
+  return `
+  <div id="topbar">
+    <div>
+      <p style="font-size:12px;color:#999;margin:0;">Distributor</p>
+      <p style="font-size:14px;font-weight:500;margin:2px 0 0;color:${BLUE};">${DISTRIBUTOR.nama} · ${codeLabel}</p>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#888;cursor:pointer;user-select:none;">
+      <input type="checkbox" ${state.guaranteedSuccess ? "checked" : ""} onchange="toggleGuaranteedSuccess(this.checked)">
+      Mode presentasi (selalu berhasil, tanpa penolakan acak)
+    </label>
+  </div>`;
+}
+
+function statCard(label, target, real) {
+  const pct = target > 0 ? Math.round((real / target) * 100) : 0;
+  return `
+  <div class="card stat-card">
+    <p style="font-size:12px;color:#999;margin:0 0 8px;">${label}</p>
+    <p style="font-size:24px;font-weight:500;margin:0;color:${BLUE};">${real.toLocaleString("id-ID")} <span style="font-size:13px;font-weight:400;color:#999;">KL</span></p>
+    <p style="font-size:12px;color:#999;margin:2px 0 0;">dari target ${target.toLocaleString("id-ID")} KL · ${pct}%</p>
+    <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(pct, 100)}%;background:${pct >= 100 ? BLUE_LIGHT : RED};"></div></div>
+  </div>`;
+}
+
+function renderBarChart(data) {
+  // data: [{name, Target, Realisasi}, ...]
+  const w = 560, h = 220, padL = 40, padB = 30, padT = 10;
+  const maxVal = Math.max(1, ...data.flatMap((d) => [d.Target, d.Realisasi])) * 1.15;
+  const groupW = (w - padL) / data.length;
+  const barW = groupW * 0.28;
+  let bars = "", labels = "", gridLines = "";
+  for (let g = 0; g <= 4; g++) {
+    const y = padT + (h - padT - padB) * (1 - g / 4);
+    gridLines += `<line x1="${padL}" y1="${y}" x2="${w}" y2="${y}" stroke="#EEEDE8" stroke-width="1"/>`;
+    gridLines += `<text x="${padL - 8}" y="${y + 4}" font-size="10" fill="#999" text-anchor="end">${Math.round(maxVal * g / 4)}</text>`;
+  }
+  data.forEach((d, i) => {
+    const cx = padL + groupW * i + groupW / 2;
+    const hTarget = (h - padT - padB) * (d.Target / maxVal);
+    const hReal = (h - padT - padB) * (d.Realisasi / maxVal);
+    const yTarget = h - padB - hTarget, yReal = h - padB - hReal;
+    bars += `<rect x="${cx - barW - 4}" y="${yTarget}" width="${barW}" height="${hTarget}" fill="${BLUE}" rx="3"/>`;
+    bars += `<rect x="${cx + 4}" y="${yReal}" width="${barW}" height="${hReal}" fill="${RED}" rx="3"/>`;
+    labels += `<text x="${cx}" y="${h - padB + 16}" font-size="12" fill="#888" text-anchor="middle">${d.name}</text>`;
+  });
+  return `
+  <svg viewBox="0 0 ${w} ${h + 10}" style="width:100%;height:260px;">
+    ${gridLines}
+    ${bars}
+    ${labels}
+  </svg>
+  <div style="display:flex;gap:16px;font-size:12px;color:#888;margin-top:4px;">
+    <span><span style="display:inline-block;width:10px;height:10px;background:${BLUE};border-radius:2px;margin-right:6px;"></span>Target</span>
+    <span><span style="display:inline-block;width:10px;height:10px;background:${RED};border-radius:2px;margin-right:6px;"></span>Realisasi</span>
+  </div>`;
+}
+
+function renderOverview() {
+  const territoryFilter = state.segment === "Retail" ? state.overviewTerritory : "Industri";
+  const data = getOverviewData(state.segment, territoryFilter);
+  const chartData = [
+    { name: "Sell In", Target: data.targetSellIn, Realisasi: data.realSellIn },
+    { name: "Sell Out", Target: data.targetSellOut, Realisasi: data.realSellOut },
+  ];
+  const territoryOptions = state.segment === "Retail"
+    ? ['<option>Semua Territory</option>'].concat(RETAIL_TERRITORIES.map((t) => `<option ${t.territory === territoryFilter ? "selected" : ""}>${t.territory}</option>`)).join("")
+    : `<option selected>Industri</option>`;
+
+  return `
+  <div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h1 style="font-size:18px;font-weight:500;margin:0;color:${BLUE};">Overview Sell In &amp; Sell Out 2026</h1>
+      <div style="display:flex;gap:8px;">
+        <select onchange="setSegment(this.value)">
+          <option ${state.segment === "Retail" ? "selected" : ""}>Retail</option>
+          <option ${state.segment === "Industri" ? "selected" : ""}>Industri</option>
+        </select>
+        <select onchange="setOverviewTerritory(this.value)" ${state.segment === "Industri" ? "disabled" : ""}>${territoryOptions}</select>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <p style="font-size:12px;color:#999;margin:0 0 12px;">Target vs Realisasi 2026 (KL)</p>
+      ${renderBarChart(chartData)}
+    </div>
+    <div style="display:flex;gap:16px;">
+      ${statCard("Sell In", data.targetSellIn, data.realSellIn)}
+      ${statCard("Sell Out", data.targetSellOut, data.realSellOut)}
+    </div>
+    <p style="font-size:12px;color:#999;margin-top:12px;">
+      ${state.segment === "Retail" ? (territoryFilter === "Semua Territory" ? "Gabungan territory Labuhan Batu &amp; Medan Utara" : "Territory " + territoryFilter) : "No. SP 730948"} · data s.d. Juni 2026
+    </p>
+  </div>`;
+}
+
+function renderOrdering() {
+  const group = groupKeyOf(state.segment, state.territory);
+  const list = ALLOCATION_DATA[group];
+  const q = state.search.trim().toLowerCase();
+  const filteredList = list.filter((m) => !q || m.kode.toLowerCase().includes(q) || m.nama.toLowerCase().includes(q));
+  const totalItems = Object.entries(state.qty).filter(([key, v]) => v > 0 && key.startsWith(group + "::")).length;
+  const needsCatatan = state.segment === "Industri" && !state.catatanKonsumen.trim();
+  const showsExcelAlokasi = usesExcelAlokasi(state.segment, state.penebusanMethod);
+  const anyExceeds = showsExcelAlokasi && Object.entries(state.qty).some(([key, v]) => {
+    if (!v || v <= 0 || !key.startsWith(group + "::")) return false;
+    const kode = key.split("::")[1];
+    const material = list.find((m) => m.kode === kode);
+    if (!material) return false;
+    const sisa = material.alokasi - (state.allocUsed[key] || 0);
+    return v > sisa;
+  });
+  const allZero = showsExcelAlokasi && list.every((m) => m.alokasi === 0);
+
+  const territoryField = state.segment === "Retail"
+    ? `<div><label class="field-label">Territory</label><select onchange="setTerritory(this.value)">${RETAIL_TERRITORIES.map((t) => `<option ${t.territory === state.territory ? "selected" : ""}>${t.territory}</option>`).join("")}</select></div>`
+    : `<div><label class="field-label">Kode Distributor</label><div style="padding:8px 10px;border:1px solid #ddd;border-radius:8px;background:#FAFAF8;color:#888;font-size:14px;">No. SP ${INDUSTRI_CODE.noSp}</div></div>`;
+
+  const plantInfo = plantInfoOf(group);
+  const plantIsD2D = isD2DPlant(group);
+  const plantField = `
+    <div><label class="field-label">Plant</label>
+      <div style="padding:8px 10px;border:1px solid #ddd;border-radius:8px;background:#FAFAF8;font-size:14px;display:flex;align-items:center;gap:6px;white-space:nowrap;">
+        <span>D2D ${plantInfo.d2dPlant}</span><span style="color:#ccc;">/</span><span>DSP ${plantInfo.dspPlant}</span>
+        <span class="badge" style="font-size:11px;padding:2px 8px;background:${plantIsD2D ? "#E9F1FB" : "#F0F0EE"};color:${plantIsD2D ? BLUE_LIGHT : "#666"};">Default ${plantInfo.tipe}</span>
+      </div>
+    </div>`;
+
+  const penebusanField = `
+    <div><label class="field-label">Penebusan</label>
+      <div style="display:flex;border:1px solid #ddd;border-radius:8px;overflow:hidden;">
+        <button style="padding:8px 16px;border:none;cursor:pointer;background:${state.penebusanMethod === "GN" ? "var(--red)" : "white"};color:${state.penebusanMethod === "GN" ? "white" : "#555"};" onclick="setPenebusanMethod('GN')">GN (${plantInfo.d2dPlant})</button>
+        <button style="padding:8px 16px;border:none;cursor:pointer;background:${state.penebusanMethod === "DSP" ? "var(--red)" : "white"};color:${state.penebusanMethod === "DSP" ? "white" : "#555"};" onclick="setPenebusanMethod('DSP')">DSP (${plantInfo.dspPlant})</button>
+      </div>
+    </div>`;
+
+  const catatanBlock = state.segment === "Industri" ? `
+    <div style="margin-bottom:20px;">
+      <label class="field-label">Kode SH atau Nama Konsumen</label>
+      <input id="catatan-input" style="width:100%;" placeholder="Contoh: SH-123456 atau PT Konsumen ABC" value="${esc(state.catatanKonsumen)}" oninput="setCatatan(this.value)">
+      <p style="font-size:12px;color:#999;margin:6px 0 0;">Order segmen Industri ditujukan ke konsumen akhir tertentu (B2B) — isi kode SH atau nama konsumen supaya Admin bisa memverifikasi tujuan order ini.</p>
+    </div>` : "";
+
+  const rows = filteredList.map((m) => {
+    const key = allocKey(group, m.kode);
+    const sisa = m.alokasi - (state.allocUsed[key] || 0);
+    const val = state.qty[key] || 0;
+    const exceeds = showsExcelAlokasi && val > sisa;
+    const alokasiCell = showsExcelAlokasi
+      ? `<td>${m.alokasi}</td><td>${sisa}</td>`
+      : `<td colspan="2" style="color:#999;font-style:italic;">Menunggu Admin Internal</td>`;
+    return `
+    <tr>
+      <td>${m.kode}</td>
+      <td>${m.nama}</td>
+      ${alokasiCell}
+      <td>${m.satuan}</td>
+      <td>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="qty-${key}" style="width:70px;border-color:${exceeds ? "var(--red)" : "#ddd"};" ${showsExcelAlokasi && sisa <= 0 ? "disabled" : ""} value="${state.qty[key] || ""}" placeholder="0"
+          oninput="setQty('${key}', this.value.replace(/[^0-9]/g,''))">
+        ${exceeds ? `<p style="font-size:11px;color:var(--red);margin:4px 0 0;">Melebihi sisa (${sisa})</p>` : ""}
+      </td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">Tidak ada material yang cocok dengan pencarian "${esc(state.search)}".</td></tr>`;
+
+  return `
+  <div>
+    <h1 style="font-size:18px;font-weight:500;margin:0 0 20px;color:${BLUE};">Ordering</h1>
+    <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
+      <div><label class="field-label">Segmen</label><select onchange="setSegment(this.value)">
+        <option ${state.segment === "Retail" ? "selected" : ""}>Retail</option>
+        <option ${state.segment === "Industri" ? "selected" : ""}>Industri</option>
+      </select></div>
+      ${territoryField}
+      ${plantField}
+      ${penebusanField}
+      <div><label class="field-label">Pembayaran</label>
+        <div style="display:flex;border:1px solid #ddd;border-radius:8px;overflow:hidden;">
+          <button style="padding:8px 16px;border:none;cursor:pointer;background:${state.paymentType === "Cash" ? "var(--red)" : "white"};color:${state.paymentType === "Cash" ? "white" : "#555"};" onclick="setPaymentType('Cash')">Cash</button>
+          <button style="padding:8px 16px;border:none;cursor:pointer;background:${state.paymentType === "Kredit" ? "var(--red)" : "white"};color:${state.paymentType === "Kredit" ? "white" : "#555"};" onclick="setPaymentType('Kredit')">Kredit</button>
+        </div>
+      </div>
+    </div>
+    <p style="font-size:12px;color:#999;margin:-12px 0 20px;">${group} punya 2 opsi Plant: D2D (${plantInfo.d2dPlant}) dan DSP (${plantInfo.dspPlant}). Default-nya ${plantInfo.tipe}, tapi silakan pilih Penebusan via GN atau DSP sesuai kebutuhan.</p>
+    <div style="border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13px;background:${showsExcelAlokasi ? "#E9F1FB" : "#FFF8E6"};color:${showsExcelAlokasi ? BLUE_LIGHT : "#8A6D00"};">
+      ${showsExcelAlokasi
+        ? (state.segment === "Industri"
+            ? `Alokasi segmen Industri (Plant ${plantInfo.d2dPlant}, FO Agustus) sudah tersedia sesuai data Excel dan bisa langsung dipakai walau Penebusan dipilih ${state.penebusanMethod} — Total &amp; Sisa Alokasi di tabel adalah kuota pasti.`
+            : `Penebusan via <strong>GN (Plant D2D ${plantInfo.d2dPlant})</strong>: alokasi 100% sesuai data Excel dan langsung bisa dipakai — Total &amp; Sisa Alokasi di tabel di bawah adalah kuota pasti.`)
+        : `Penebusan via <strong>DSP (Plant ${plantInfo.dspPlant})</strong>: alokasi <strong>tidak</strong> otomatis dari Excel. Qty yang diisi adalah permintaan awal — Admin Internal akan menentukan alokasi final setelah order diproses.`}
+    </div>
+    ${state.paymentType === "Kredit" ? `
+    <div style="border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13px;background:#F5F5F3;border:1px solid #E5E4E0;display:flex;gap:24px;flex-wrap:wrap;align-items:center;">
+      <div><span style="color:#888;">Limit Kredit</span><br><strong style="color:${BLUE};font-size:15px;">${formatRupiah(DISTRIBUTOR_CREDIT.limit)}</strong></div>
+      <div><span style="color:#888;">Kredit Terpakai</span><br><strong style="color:#8A6D00;font-size:15px;">${formatRupiah(DISTRIBUTOR_CREDIT.terpakai)}</strong></div>
+      <div><span style="color:#888;">Sisa Kredit</span><br><strong style="color:${BLUE_LIGHT};font-size:15px;">${formatRupiah(DISTRIBUTOR_CREDIT.limit - DISTRIBUTOR_CREDIT.terpakai)}</strong></div>
+      <span style="font-size:11px;color:#aaa;width:100%;">*Data limit &amp; pemakaian kredit belum ada di source Excel — angka di atas placeholder, perlu disambungkan ke data AR/Credit Management SAP untuk angka riil &amp; potongan otomatis per SO.</span>
+    </div>` : ""}
+    ${catatanBlock}
+    <div style="position:relative;max-width:320px;margin-bottom:12px;">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);">${ICONS.search}</span>
+      <input id="search-input" style="width:100%;padding-left:32px;" placeholder="Cari kode KIMAP atau nama material..." value="${esc(state.search)}" oninput="setSearch(this.value)">
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table>
+        <thead><tr><th>Kode Material (KIMAP)</th><th>Material</th><th>Total Alokasi</th><th>Sisa Alokasi</th><th>Satuan</th><th>Qty Order</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${allZero ? `<p style="font-size:12px;color:var(--red);margin-top:8px;">Belum ada alokasi untuk ${state.segment === "Retail" ? state.territory : "segmen Industri"} pada periode ini.</p>` : ""}
+    <button class="btn btn-red" style="margin-top:20px;" ${(totalItems === 0 || needsCatatan || anyExceeds) ? "disabled" : ""} onclick="submitOrder()">
+      Submit Order ${totalItems > 0 ? "(" + totalItems + " item)" : ""}
+    </button>
+    ${needsCatatan && totalItems > 0 ? `<p style="font-size:12px;color:var(--red);margin-top:8px;">Isi kode SH atau nama konsumen dulu untuk order segmen Industri.</p>` : ""}
+  </div>`;
+}
+
+function renderPendingAdminBlock(order) {
+  return `
+    <div style="margin-top:16px;padding-top:16px;border-top:1px dashed #ddd;">
+      <p style="font-size:12px;color:#999;margin:0 0 12px;">
+        Order sedang <strong>pending di tahap ini</strong>, menunggu diproses Admin Internal. Durasinya tergantung kecepatan kerja Admin — kamu akan dapat notifikasi begitu statusnya berubah.
+      </p>
+      <button style="font-size:12px;padding:8px 12px;border-radius:8px;border:1px solid #ccc;color:#777;background:#FAFAF9;cursor:pointer;" onclick="processAdminStep('${order.id}')">[Simulasi] Proses sebagai Admin Internal &rarr;</button>
+    </div>`;
+}
+
+function renderOrderDetail() {
+  const order = state.orders.find((o) => o.id === state.activeOrderId);
+  if (!order) return `<p>Order tidak ditemukan.</p>`;
+  const isRejected = order.terminalStatus === "DITOLAK";
+  const isCancelled = order.terminalStatus === "DIBATALKAN";
+  const isTerminal = isRejected || isCancelled;
+  const needsUpload = !isTerminal && order.paymentType === "Cash" && order.flow[order.step] === "Upload bukti bayar";
+  const isDone = !isTerminal && order.step === order.flow.length - 1;
+
+  const stepperHtml = order.flow.map((label, i) => {
+    const circleBg = i < order.step ? BLUE_LIGHT : i === order.step ? RED : "#EEEDE8";
+    const circleColor = i <= order.step ? "white" : "#999";
+    const icon = i < order.step ? ICONS.check : i === order.step ? ICONS.clock : ICONS.circle;
+    const lineColor = i < order.step ? BLUE_LIGHT : "#EEEDE8";
+    return `<div class="step-row">
+      <div class="step">
+        <div class="step-circle" style="background:${circleBg};color:${circleColor};">${icon}</div>
+        <p style="font-size:11px;text-align:center;margin-top:8px;line-height:1.2;color:#888;">${label}</p>
+      </div>
+      ${i < order.flow.length - 1 ? `<div class="step-line" style="background:${lineColor};"></div>` : ""}
+    </div>`;
+  }).join("");
+
+  return `
+  <div>
+    <button class="btn-outline" style="border:none;background:none;display:flex;align-items:center;gap:6px;color:#666;padding:0;margin-bottom:16px;cursor:pointer;" onclick="goTab('${state.detailReturnTab || "realisasi"}')">${ICONS.arrowLeft} Kembali</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h1 style="font-size:18px;font-weight:500;margin:0;color:${BLUE};">${order.id}</h1>
+      <span class="badge" style="background:${isTerminal ? "#F0F0EE" : isDone ? "#E9F1FB" : "#FBEAEA"};color:${isTerminal ? "#666" : isDone ? BLUE_LIGHT : "var(--red)"};">${isRejected ? "Ditolak" : isCancelled ? "Dibatalkan" : order.flow[order.step]}</span>
+    </div>
+    <p style="font-size:14px;color:#888;margin:0 0 20px;">${order.territory} · ${order.segment} · Plant ${order.plantUsed} (via ${order.penebusanMethod}) · ${order.paymentType} · ${order.date}${order.quotationNumber ? " · Quotation " + order.quotationNumber : ""}${order.soNumber ? " · SO " + order.soNumber : ""}</p>
+    <div style="border-radius:12px;padding:10px 14px;margin-bottom:20px;font-size:13px;background:${order.usesExcelAlokasi ? "#E9F1FB" : "#FFF8E6"};color:${order.usesExcelAlokasi ? BLUE_LIGHT : "#8A6D00"};">
+      Alokasi: <strong>${order.alokasiSource}</strong>${!order.usesExcelAlokasi ? " — qty di bawah adalah permintaan awal, jumlah final ditentukan Admin Internal" : order.allocDeducted ? " — sudah terpotong dari sisa alokasi" : ` — belum terpotong, akan otomatis terpotong saat ${order.paymentType === "Cash" ? "Quotation" : "Sales Order"} terbit`}
+    </div>
+
+    ${order.catatanKonsumen ? `<div style="border-radius:12px;padding:12px 16px;margin-bottom:20px;font-size:14px;background:#FBEAEA;color:var(--red);">Konsumen: ${esc(order.catatanKonsumen)}</div>` : ""}
+
+    ${isRejected ? `
+    <div class="card" style="background:#FBEAEA;border-color:#F0C4C4;margin-bottom:20px;">
+      <p style="font-size:14px;font-weight:500;margin:0 0 4px;color:var(--red);">Order ditolak oleh Admin Internal</p>
+      <p style="font-size:14px;color:#555;margin:0;">Alasan: ${esc(order.rejectReason)}</p>
+      <p style="font-size:12px;color:#999;margin:10px 0 0;">Silakan hubungi Admin Internal atau buat order baru dengan dokumen yang lengkap di menu Ordering.</p>
+    </div>` : ""}
+
+    ${isCancelled ? `
+    <div class="card" style="background:#F5F5F3;border-color:#ddd;margin-bottom:20px;">
+      <p style="font-size:14px;font-weight:500;margin:0 0 4px;color:#555;">Order dibatalkan oleh distributor</p>
+      ${order.cancelReason ? `<p style="font-size:14px;color:#555;margin:0;">Alasan: ${esc(order.cancelReason)}</p>` : ""}
+      <p style="font-size:12px;color:#999;margin:10px 0 0;">${order.allocDeducted ? "Alokasi yang sudah terpotong (sejak " + (order.paymentType === "Cash" ? "Quotation" : "Sales Order") + " terbit) sudah dikembalikan ke sisa alokasi." : order.usesExcelAlokasi ? "Order dibatalkan sebelum alokasi sempat terpotong, jadi sisa alokasi tidak berubah." : "Order ini via DSP sehingga tidak memotong alokasi Excel."}</p>
+    </div>` : ""}
+
+    ${!isTerminal ? `
+    <div class="card" style="margin-bottom:20px;">
+      <p style="font-size:12px;color:#999;margin:0 0 16px;">Status order</p>
+      <div class="stepper">${stepperHtml}</div>
+      ${(!isDone && !needsUpload) ? renderPendingAdminBlock(order) : ""}
+    </div>
+    <div class="card" style="margin-bottom:20px;">
+      <p style="font-size:12px;color:#999;margin:0 0 12px;">Item order</p>
+      <table>${order.items.map((it) => `<tr><td>${it.kode}</td><td>${it.nama}</td><td style="text-align:right;">${it.qty} ${it.satuan}</td></tr>`).join("")}</table>
+    </div>` : ""}
+
+    ${(order.paymentType === "Cash" && !isTerminal && order.flow.indexOf(order.flow[order.step]) >= order.flow.indexOf("Quotation terbit")) ? `
+    <div class="card" style="margin-bottom:20px;">
+      <p style="font-size:12px;color:#999;margin:0 0 12px;">Quotation</p>
+      <a href="#" onclick="return false;" style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--red);text-decoration:none;">${ICONS.file} Download Quotation PDF (No. SAP: QT-${order.id.slice(-4)}00${order.id.slice(-4)})</a>
+    </div>` : ""}
+
+    ${needsUpload ? `
+    <div class="card" style="margin-bottom:20px;">
+      ${order.paymentRejected ? `<div style="border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:14px;background:#FBEAEA;color:var(--red);">Bukti bayar sebelumnya ditolak. Alasan: ${esc(order.paymentRejectReason)}. Silakan upload ulang.</div>` : ""}
+      <p style="font-size:12px;color:#999;margin:0 0 12px;">Upload bukti bayar</p>
+      <button style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:1px dashed #ccc;border-radius:8px;padding:12px;background:white;color:#666;font-size:14px;cursor:pointer;" onclick="markProofUploaded('${order.id}')">${ICONS.upload} Klik untuk simulasikan upload file</button>
+    </div>` : ""}
+
+    ${isDone ? `
+    <div class="card" style="border-color:${BLUE};margin-bottom:20px;">
+      <p style="font-size:12px;color:${BLUE_LIGHT};margin:0 0 12px;">Sales order terbit — order berhasil</p>
+      <a href="#" onclick="return false;" style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:${BLUE_LIGHT};text-decoration:none;">${ICONS.file} Download Sales Order PDF (No. SAP: SO-${order.id.slice(-4)})</a>
+    </div>` : ""}
+
+    ${!isTerminal ? `<button style="margin-top:4px;padding:8px 16px;border-radius:8px;border:1px solid var(--red);color:var(--red);background:white;font-size:14px;cursor:pointer;" onclick="cancelOrder('${order.id}')">Batalkan Order</button>` : ""}
+  </div>`;
+}
+
+function renderUploadBukti() {
+  const pending = state.orders.filter((o) => !o.terminalStatus && o.paymentType === "Cash" && o.flow[o.step] === "Upload bukti bayar");
+  const rows = pending.map((o) => `
+    <tr>
+      <td>${o.id}</td>
+      <td>${o.date}</td>
+      <td>${o.territory}</td>
+      <td>${o.segment}</td>
+      <td>${o.quotationNumber || "-"}</td>
+      <td>${o.items.reduce((s, it) => s + it.qty, 0)} item</td>
+      <td style="display:flex;gap:8px;">
+        <button style="font-size:12px;padding:8px 12px;border-radius:8px;border:1px dashed #ccc;color:#666;background:white;cursor:pointer;display:flex;align-items:center;gap:6px;" onclick="markProofUploaded('${o.id}')">${ICONS.upload} Upload</button>
+        <button style="font-size:12px;padding:8px 12px;border-radius:8px;border:1px solid #ddd;color:#666;background:white;cursor:pointer;" onclick="openOrder('${o.id}', 'uploadBukti')">Detail</button>
+      </td>
+    </tr>`).join("") || `<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">Tidak ada order Cash yang sedang menunggu upload bukti bayar.</td></tr>`;
+
+  return `
+  <div>
+    <h1 style="font-size:18px;font-weight:500;margin:0 0 6px;color:${BLUE};">Upload Bukti Bayar</h1>
+    <p style="font-size:13px;color:#999;margin:0 0 20px;">Order Cash yang Quotation-nya sudah terbit dan sedang menunggu bukti pembayaran diupload sebelum Admin Internal validasi &amp; menerbitkan Sales Order.</p>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table>
+        <thead><tr><th>No Order</th><th>Tanggal</th><th>Territory</th><th>Segmen</th><th>No. Quotation</th><th>Total Qty</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function renderSalesOrderList() {
+  const issued = state.orders.filter((o) => o.soNumber);
+  const rows = issued.map((o) => `
+    <tr>
+      <td>${o.soNumber}</td>
+      <td>${o.id}</td>
+      <td>${o.date}</td>
+      <td>${o.territory}</td>
+      <td>${o.segment}</td>
+      <td>${o.plantUsed}</td>
+      <td>${o.penebusanMethod}</td>
+      <td>${o.paymentType}</td>
+      <td>${o.terminalStatus === "DIBATALKAN" ? `<span style="color:#666;">Dibatalkan</span>` : `<span style="color:${BLUE_LIGHT};">Aktif</span>`}</td>
+      <td><button style="background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;padding:0;" onclick="openOrder('${o.id}', 'salesOrder')">Detail</button></td>
+    </tr>`).join("") || `<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">Belum ada Sales Order yang terbit.</td></tr>`;
+
+  return `
+  <div>
+    <h1 style="font-size:18px;font-weight:500;margin:0 0 6px;color:${BLUE};">Sales Order</h1>
+    <p style="font-size:13px;color:#999;margin:0 0 20px;">Daftar order yang Sales Order-nya sudah diterbitkan Admin Internal (No. SO dientry manual oleh Admin — belum terhubung real-time ke SAP).</p>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table>
+        <thead><tr><th>No. SO</th><th>No Order</th><th>Tanggal</th><th>Territory</th><th>Segmen</th><th>Plant</th><th>Penebusan</th><th>Pembayaran</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function renderRealisasi() {
+  const rows = state.orders.map((o) => `
+    <tr>
+      <td>${o.id}</td>
+      <td>${o.date}</td>
+      <td>${o.territory}</td>
+      <td>${o.segment}</td>
+      <td>${o.plantUsed}</td>
+      <td>${o.penebusanMethod} <span style="color:#999;font-size:12px;">(${esc(o.alokasiSource)})</span></td>
+      <td>${o.paymentType}</td>
+      <td>${o.terminalStatus === "DITOLAK" ? `<span style="color:var(--red);">Ditolak</span>` : o.terminalStatus === "DIBATALKAN" ? `<span style="color:#666;">Dibatalkan</span>` : o.flow[o.step]}</td>
+      <td><button style="background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;padding:0;" onclick="openOrder('${o.id}', 'realisasi')">Detail</button></td>
+    </tr>`).join("") || `<tr><td colspan="9" style="text-align:center;color:#999;padding:32px;">Belum ada order. Buat order baru di menu Ordering.</td></tr>`;
+
+  return `
+  <div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h1 style="font-size:18px;font-weight:500;margin:0;color:${BLUE};">Realisasi Pembelian Alokasi</h1>
+      <button class="btn" style="background:${BLUE_LIGHT};color:white;display:flex;align-items:center;gap:8px;" onclick="alert('Fitur download Excel: sudah tersedia di kode production (endpoint /api/realization/export).')">${ICONS.download} Download Excel</button>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table>
+        <thead><tr><th>No Order</th><th>Tanggal</th><th>Territory</th><th>Segmen</th><th>Plant</th><th>Penebusan</th><th>Pembayaran</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function renderApp() {
+  let content = "";
+  if (state.tab === "overview") content = renderOverview();
+  else if (state.tab === "ordering") content = renderOrdering();
+  else if (state.tab === "detail") content = renderOrderDetail();
+  else if (state.tab === "uploadBukti") content = renderUploadBukti();
+  else if (state.tab === "salesOrder") content = renderSalesOrderList();
+  else if (state.tab === "realisasi") content = renderRealisasi();
+
+  return `
+  <div id="app-screen">
+    ${renderNotifications()}
+    ${renderSidebar()}
+    <div id="main">
+      ${renderTopbar()}
+      <div id="content">${content}</div>
+    </div>
+  </div>`;
+}
+
+// ============ FOCUS-PRESERVING RENDER ============
+function render() {
+  const root = document.getElementById("root");
+  const active = document.activeElement;
+  const activeId = active && active.id;
+  const selStart = active && active.selectionStart;
+  const selEnd = active && active.selectionEnd;
+
+  root.innerHTML = state.screen === "login" ? renderLogin() : renderApp();
+
+  if (activeId) {
+    const el = document.getElementById(activeId);
+    if (el) {
+      el.focus();
+      if (typeof selStart === "number" && el.setSelectionRange) {
+        try { el.setSelectionRange(selStart, selEnd); } catch (e) {}
+      }
+    }
+  }
+}
+
+render();
+</script>
+</body>
+</html>
